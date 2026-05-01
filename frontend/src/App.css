@@ -1,0 +1,147 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 🌙 DARK MODE */
+body.dark {
+  background: linear-gradient(135deg, #0f172a, #020617);
+  color: white;
+}
+
+/* ☀️ LIGHT MODE */
+body.light {
+  background: #f1f5f9;
+  color: black;
+}
+
+/* 🔥 MAIN WRAPPER (move UP slightly) */
+.App {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; /* 🔥 was center */
+  padding-top: 60px; /* 🔥 moves container up */
+}
+
+/* 📦 CONTAINER */
+.container {
+  width: 100%;
+  max-width: 800px; /* 🔥 slightly wider */
+  padding: 30px;
+  border-radius: 16px;
+  transition: 0.3s;
+}
+
+/* Theme container colors */
+body.dark .container {
+  background: #111827;
+}
+
+body.light .container {
+  background: white;
+}
+
+/* 🔥 TITLE */
+h1 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* INPUTS */
+input, select {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  border-radius: 10px;
+  border: none;
+  outline: none;
+  font-size: 14px;
+}
+
+body.dark input,
+body.dark select {
+  background: #1f2937;
+  color: white;
+}
+
+body.light input,
+body.light select {
+  background: #e5e7eb;
+  color: black;
+}
+
+/* ROW */
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.row select {
+  flex: 1;
+}
+
+/* BUTTON */
+button {
+  padding: 12px 18px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s;
+}
+
+button:hover {
+  transform: scale(1.05);
+}
+
+/* LOADING */
+.loading {
+  margin-top: 15px;
+  text-align: center;
+}
+
+/* 🔥 RESULT (WIDER + BETTER READABILITY) */
+.result {
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: 12px;
+  line-height: 1.7;
+  font-size: 15px;
+  white-space: pre-wrap;
+}
+
+body.dark .result {
+  background: #1f2937;
+}
+
+body.light .result {
+  background: #e5e7eb;
+}
+
+/* PDF BUTTON */
+.download-btn {
+  margin-top: 12px;
+  width: 100%;
+  background: #3b82f6;
+}
+
+.download-btn:hover {
+  background: #2563eb;
+}
+
+/* TOGGLE */
+.toggle {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.toggle button {
+  background: transparent;
+  border: 1px solid #555;
+  padding: 6px 10px;
+}
