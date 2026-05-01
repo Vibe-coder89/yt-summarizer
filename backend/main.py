@@ -15,7 +15,7 @@ client = Groq(api_key=GROQ_API_KEY)
 # FastAPI app
 app = FastAPI()
 
-# CORS
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -103,13 +103,13 @@ def summarize_text(text, lang, length):
     return cleaned if cleaned.strip() else raw_summary
 
 
-# Home route
+
 @app.get("/")
 def home():
     return {"message": "API is working"}
 
 
-# 🔥 Summarize route
+
 @app.get("/summarize")
 def summarize(url: str, lang: str = "en", length: str = "medium"):
     try:
