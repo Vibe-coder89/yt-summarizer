@@ -10,19 +10,11 @@ import os
 import time
 from dotenv import load_dotenv
 
-# Whisper + download
-import whisper
-import yt_dlp
-
 # Load env
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Clients
 client = Groq(api_key=GROQ_API_KEY)
-
-# ⚠️ load small model (important for Render)
-whisper_model = whisper.load_model("base")
 
 app = FastAPI()
 
@@ -47,7 +39,7 @@ def to_enchanting(text):
     return "".join(sga_map.get(c, c) for c in text.lower())
 
 
-# Extract video id
+# Extract video ID
 def extract_video_id(url: str):
     if "v=" in url:
         return url.split("v=")[1].split("&")[0]
@@ -76,27 +68,6 @@ def get_transcript(video_id):
             time.sleep(2)
 
     return None
-
-
-# 🔥 Download audio
-def download_audio(video_id):
-    url = f"https://www.youtube.com/watch?v={video_id}"
-
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': 'audio.%(ext)s',
-        'quiet': True
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        return ydl.prepare_filename(info)
-
-
-# 🔥 Whisper transcription
-def transcribe_audio(file_path):
-    result = whisper_model.transcribe(file_path)
-    return result["text"]
 
 
 # 🔥 Summarization
@@ -153,19 +124,13 @@ def summarize(url: str, lang: str = "en", length: str = "medium"):
     try:
         video_id = extract_video_id(url)
 
-        # 1️⃣ Try transcript first
         text = get_transcript(video_id)
 
-        # 2️⃣ Whisper fallback
+        # ❌ No Whisper fallback anymore
         if not text:
-            try:
-                audio_file = download_audio(video_id)
-                text = transcribe_audio(audio_file)
-                os.remove(audio_file)
-            except:
-                return {
-                    "error": "Could not process this video (transcript + audio failed)"
-                }
+            return {
+                "error": "No transcript available for this video"
+            }
 
         summary = summarize_text(text, lang, length)
 
