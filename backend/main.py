@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import (
+    YouTubeTranscriptApi,
+    TranscriptsDisabled,
+    NoTranscriptFound
+)
 from groq import Groq
 import os
 from dotenv import load_dotenv
@@ -15,7 +19,7 @@ client = Groq(api_key=GROQ_API_KEY)
 # FastAPI app
 app = FastAPI()
 
-
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,13 +40,31 @@ def to_enchanting(text):
     return "".join(sga_map.get(char, char) for char in text.lower())
 
 
-# Extract video ID
+# 🔹 Extract video ID
 def extract_video_id(url: str):
     if "v=" in url:
         return url.split("v=")[1].split("&")[0]
     elif "youtu.be/" in url:
         return url.split("youtu.be/")[1].split("?")[0]
     return url
+
+
+# 🔥 FIXED transcript function (IMPORTANT)
+def get_transcript(video_id):
+    try:
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+
+        try:
+            transcript = transcript_list.find_transcript(['en'])
+        except:
+            transcript = transcript_list.find_generated_transcript(['en'])
+
+        data = transcript.fetch()
+
+        return " ".join([t['text'] for t in data])
+
+    except (TranscriptsDisabled, NoTranscriptFound):
+        return None
 
 
 # 🔥 Summarization function
@@ -58,12 +80,12 @@ def summarize_text(text, lang, length):
     else:
         detail = """
         in a detailed format with:
-        - 20-25 bullet points
-        - Each point 4-5 lines long
+        - 10-15 bullet points
+        - Each point 2-3 lines long
         - Include explanations and key insights
         """
 
-    # 🌍 Language handling
+    # 🌍 Language
     if lang == "hi":
         lang_text = "Hindi"
     elif lang == "harappan":
@@ -71,7 +93,7 @@ def summarize_text(text, lang, length):
     else:
         lang_text = "English"
 
-    # 🔥 Strong prompt (prevents intro text)
+    # 🧠 Prompt
     prompt = f"""
     Summarize the following transcript {detail} in {lang_text}.
 
@@ -93,47 +115,36 @@ def summarize_text(text, lang, length):
 
     raw_summary = response.choices[0].message.content
 
-    # 🔥 CLEANING (safe version)
+    # Clean output
     cleaned = "\n".join(
         line for line in raw_summary.split("\n")
         if line.strip().startswith("-")
     )
 
-    # fallback if model ignored format
     return cleaned if cleaned.strip() else raw_summary
 
 
-
+# Home route
 @app.get("/")
 def home():
     return {"message": "API is working"}
 
 
-
+# 🔥 Summarize route
 @app.get("/summarize")
 def summarize(url: str, lang: str = "en", length: str = "medium"):
     try:
         video_id = extract_video_id(url)
 
-        api = YouTubeTranscriptApi()
+        # ✅ Get transcript (fixed)
+        text = get_transcript(video_id)
 
-        # 🎯 Try fetching transcript
-        try:
-            transcript = api.fetch(video_id, languages=["en"])
-        except:
-            try:
-                transcript = api.fetch(video_id, languages=["hi"])
-            except:
-                return {"error": "No transcript available for this video"}
-
-        text = " ".join([t.text for t in transcript])
-
-        if not text.strip():
-            return {"error": "Transcript is empty"}
+        if not text:
+            return {"error": "No transcript available for this video"}
 
         summary = summarize_text(text, lang, length)
 
-        # 🎮 Minecraft conversion AFTER AI
+        # 🎮 Minecraft conversion
         if lang == "minecraft":
             summary = to_enchanting(summary)
 
