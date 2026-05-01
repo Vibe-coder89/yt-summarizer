@@ -77,7 +77,7 @@ function App() {
   const margin = 10;
   const lineHeight = 7;
 
-  // Title
+
   doc.setFontSize(16);
   doc.text(title || "YouTube Summary", margin, margin);
 
@@ -109,7 +109,7 @@ function App() {
     <div className="App">
       <div className="container">
 
-        {/* 🌙 Toggle */}
+        {}
         <div className="toggle">
           <button onClick={() => setDarkMode(!darkMode)}>
             {darkMode ? "☀️" : "🌙"}
