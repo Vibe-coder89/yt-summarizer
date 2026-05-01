@@ -10,14 +10,20 @@ import os
 import time
 from dotenv import load_dotenv
 
+# Whisper + download
+import whisper
+import yt_dlp
+
 # Load env
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Groq client
+# Clients
 client = Groq(api_key=GROQ_API_KEY)
 
-# FastAPI app
+# ⚠️ load small model (important for Render)
+whisper_model = whisper.load_model("base")
+
 app = FastAPI()
 
 # CORS
@@ -29,7 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🎮 Minecraft Enchanting mapping
+# 🎮 Minecraft mapping
 sga_map = {
     "a":"ᔑ","b":"ʖ","c":"ᓵ","d":"↸","e":"ᒷ","f":"⎓","g":"⊣",
     "h":"⍑","i":"╎","j":"⋮","k":"ꖌ","l":"ꖎ","m":"ᒲ","n":"リ",
@@ -41,7 +47,7 @@ def to_enchanting(text):
     return "".join(sga_map.get(c, c) for c in text.lower())
 
 
-# 🔹 Extract video ID
+# Extract video id
 def extract_video_id(url: str):
     if "v=" in url:
         return url.split("v=")[1].split("&")[0]
@@ -50,46 +56,59 @@ def extract_video_id(url: str):
     return url
 
 
-# 🔥 Robust transcript fetch with retry
+# 🔥 Transcript (with retry)
 def get_transcript(video_id):
-    for attempt in range(3):
+    for _ in range(3):
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            tl = YouTubeTranscriptApi.list_transcripts(video_id)
 
             try:
-                transcript = transcript_list.find_transcript(['en'])
+                t = tl.find_transcript(['en'])
             except:
-                transcript = transcript_list.find_generated_transcript(['en'])
+                t = tl.find_generated_transcript(['en'])
 
-            data = transcript.fetch()
-            return " ".join([t['text'] for t in data])
+            data = t.fetch()
+            return " ".join([x['text'] for x in data])
 
         except (TranscriptsDisabled, NoTranscriptFound):
             return None
-
-        except Exception:
-            time.sleep(2 + attempt)  # backoff retry
+        except:
+            time.sleep(2)
 
     return None
+
+
+# 🔥 Download audio
+def download_audio(video_id):
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': 'audio.%(ext)s',
+        'quiet': True
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        return ydl.prepare_filename(info)
+
+
+# 🔥 Whisper transcription
+def transcribe_audio(file_path):
+    result = whisper_model.transcribe(file_path)
+    return result["text"]
 
 
 # 🔥 Summarization
 def summarize_text(text, lang, length):
 
-    # Length control
     if length == "short":
         detail = "in 3-4 very short bullet points"
     elif length == "medium":
         detail = "in 6-8 clear bullet points"
     else:
-        detail = """
-        in a detailed format with:
-        - 10-15 bullet points
-        - Each point 2-3 lines long
-        - Include explanations and key insights
-        """
+        detail = "in 10-15 detailed bullet points"
 
-    # Language
     if lang == "hi":
         lang_text = "Hindi"
     elif lang == "harappan":
@@ -101,10 +120,9 @@ def summarize_text(text, lang, length):
     Summarize the following transcript {detail} in {lang_text}.
 
     RULES:
-    - Output ONLY bullet points
-    - No introduction
-    - No headings
-    - Start directly with "- "
+    - Only bullet points
+    - No intro
+    - Start with "- "
 
     Transcript:
     {text[:4000]}
@@ -117,7 +135,6 @@ def summarize_text(text, lang, length):
 
     raw = response.choices[0].message.content
 
-    # Clean output
     cleaned = "\n".join(
         line for line in raw.split("\n")
         if line.strip().startswith("-")
@@ -126,24 +143,29 @@ def summarize_text(text, lang, length):
     return cleaned if cleaned.strip() else raw
 
 
-# Home
 @app.get("/")
 def home():
     return {"message": "API is working"}
 
 
-# 🔥 Main route
 @app.get("/summarize")
 def summarize(url: str, lang: str = "en", length: str = "medium"):
     try:
         video_id = extract_video_id(url)
 
+        # 1️⃣ Try transcript first
         text = get_transcript(video_id)
 
+        # 2️⃣ Whisper fallback
         if not text:
-            return {
-                "error": "Transcript unavailable or rate-limited. Try another video or try again."
-            }
+            try:
+                audio_file = download_audio(video_id)
+                text = transcribe_audio(audio_file)
+                os.remove(audio_file)
+            except:
+                return {
+                    "error": "Could not process this video (transcript + audio failed)"
+                }
 
         summary = summarize_text(text, lang, length)
 
