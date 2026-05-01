@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import jsPDF from "jspdf";
 
+// 🔥 use environment variable
+const API_URL =
+  process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
+
 function App() {
   const [url, setUrl] = useState("");
   const [summary, setSummary] = useState("");
@@ -11,7 +15,6 @@ function App() {
   const [title, setTitle] = useState("");
   const [darkMode, setDarkMode] = useState(true);
 
- 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme) {
@@ -19,7 +22,6 @@ function App() {
     }
   }, []);
 
-  
   useEffect(() => {
     if (darkMode) {
       document.body.className = "dark";
@@ -37,7 +39,7 @@ function App() {
     setSummary("");
 
     try {
-      
+      // 🎥 Get video title
       try {
         const res = await fetch(
           `https://www.youtube.com/oembed?url=${url}&format=json`
@@ -48,17 +50,19 @@ function App() {
         setTitle("youtube-summary");
       }
 
-      
+      // 🔥 Use API URL (important change)
       const response = await fetch(
-        `http://127.0.0.1:8000/summarize?url=${url}&lang=${lang}&length=${length}`
+        `${API_URL}/summarize?url=${url}&lang=${lang}&length=${length}`
       );
 
       const data = await response.json();
 
       if (data.summary) {
         setSummary(data.summary);
-      } else {
+      } else if (data.error) {
         setSummary("Error: " + data.error);
+      } else {
+        setSummary("Something went wrong");
       }
     } catch {
       setSummary("Error connecting to backend");
@@ -67,49 +71,43 @@ function App() {
     setLoading(false);
   };
 
-  
- const downloadPDF = () => {
-  if (!summary) return;
+  const downloadPDF = () => {
+    if (!summary) return;
 
-  const doc = new jsPDF();
+    const doc = new jsPDF();
 
-  const pageHeight = doc.internal.pageSize.height;
-  const margin = 10;
-  const lineHeight = 7;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 10;
+    const lineHeight = 7;
 
-  // Title
-  doc.setFontSize(16);
-  doc.text(title || "YouTube Summary", margin, margin);
+    doc.setFontSize(16);
+    doc.text(title || "YouTube Summary", margin, margin);
 
-  doc.setFontSize(12);
+    doc.setFontSize(12);
+    const lines = doc.splitTextToSize(summary, 180);
 
-  const lines = doc.splitTextToSize(summary, 180);
+    let y = 20;
 
-  let y = 20;
+    lines.forEach((line) => {
+      if (y + lineHeight > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += lineHeight;
+    });
 
-  lines.forEach((line) => {
-    if (y + lineHeight > pageHeight - margin) {
-      doc.addPage();
-      y = margin;
-    }
+    const cleanTitle = (title || "youtube-summary").replace(
+      /[\\/:*?"<>|]/g,
+      ""
+    );
 
-    doc.text(line, margin, y);
-    y += lineHeight;
-  });
-
-  const cleanTitle = (title || "youtube-summary").replace(
-    /[\\/:*?"<>|]/g,
-    ""
-  );
-
-  doc.save(`${cleanTitle}.pdf`);
-};
+    doc.save(`${cleanTitle}.pdf`);
+  };
 
   return (
     <div className="App">
       <div className="container">
-
-        {/* 🌙 Toggle */}
         <div className="toggle">
           <button onClick={() => setDarkMode(!darkMode)}>
             {darkMode ? "☀️" : "🌙"}
@@ -147,7 +145,6 @@ function App() {
         {summary && (
           <>
             <div className="result">{summary}</div>
-
             <button onClick={downloadPDF} className="download-btn">
               📄 Download PDF
             </button>
