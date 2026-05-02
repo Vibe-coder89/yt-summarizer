@@ -1,14 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from youtube_transcript_api import (
-    YouTubeTranscriptApi,
-    TranscriptsDisabled,
-    NoTranscriptFound
-)
 from groq import Groq
 import os
-import time
 from dotenv import load_dotenv
+import yt_dlp
 
 # Load env
 load_dotenv()
@@ -39,7 +34,7 @@ def to_enchanting(text):
     return "".join(sga_map.get(c, c) for c in text.lower())
 
 
-# Extract video ID
+# 🔥 Extract video ID
 def extract_video_id(url: str):
     if "v=" in url:
         return url.split("v=")[1].split("&")[0]
@@ -48,26 +43,42 @@ def extract_video_id(url: str):
     return url
 
 
-# 🔥 Transcript (with retry)
+# 🔥 Get transcript using yt-dlp (BEST for Render)
 def get_transcript(video_id):
-    for _ in range(3):
-        try:
-            tl = YouTubeTranscriptApi.list_transcripts(video_id)
+    url = f"https://www.youtube.com/watch?v={video_id}"
 
-            try:
-                t = tl.find_transcript(['en'])
-            except:
-                t = tl.find_generated_transcript(['en'])
+    ydl_opts = {
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitlesformat": "vtt",
+        "subtitleslangs": ["en"],
+        "outtmpl": "sub"
+    }
 
-            data = t.fetch()
-            return " ".join([x['text'] for x in data])
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-        except (TranscriptsDisabled, NoTranscriptFound):
+        # Read subtitles file
+        if not os.path.exists("sub.en.vtt"):
             return None
-        except:
-            time.sleep(2)
 
-    return None
+        with open("sub.en.vtt", "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Clean captions
+        lines = content.split("\n")
+        text = " ".join(
+            line for line in lines
+            if line and "-->" not in line and "WEBVTT" not in line
+        )
+
+        return text.strip()
+
+    except Exception as e:
+        print("YT-DLP ERROR:", e)
+        return None
 
 
 # 🔥 Summarization
@@ -126,10 +137,9 @@ def summarize(url: str, lang: str = "en", length: str = "medium"):
 
         text = get_transcript(video_id)
 
-        # ❌ No Whisper fallback anymore
         if not text:
             return {
-                "error": "No transcript available for this video"
+                "error": "No captions available for this video"
             }
 
         summary = summarize_text(text, lang, length)
