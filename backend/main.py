@@ -1,20 +1,19 @@
-from fastapi import FastAPI, Body
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from youtube_transcript_api import YouTubeTranscriptApi
 from groq import Groq
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load env
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Groq client
 client = Groq(api_key=GROQ_API_KEY)
 
-# FastAPI app
 app = FastAPI()
 
-# CORS (allow frontend requests)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,44 +22,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🎮 Minecraft language mapping
-sga_map = {
-    "a":"ᔑ","b":"ʖ","c":"ᓵ","d":"↸","e":"ᒷ","f":"⎓","g":"⊣",
-    "h":"⍑","i":"╎","j":"⋮","k":"ꖌ","l":"ꖎ","m":"ᒲ","n":"リ",
-    "o":"𝙹","p":"!¡","q":"ᑑ","r":"∷","s":"ᓭ","t":"ℸ","u":"⚍",
-    "v":"⍊","w":"∴","x":" ̇/","y":"||","z":"⨅"
-}
-
-def to_enchanting(text):
-    return "".join(sga_map.get(c, c) for c in text.lower())
+# Extract video ID
+def extract_video_id(url: str):
+    if "v=" in url:
+        return url.split("v=")[1].split("&")[0]
+    elif "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+    return url
 
 
-# 🔥 Summarization function
-def summarize_text(text, lang="en", length="medium"):
+# Get transcript
+def get_transcript(video_id):
+    try:
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        return " ".join([t["text"] for t in transcript])
+    except:
+        return None
 
-    # Length control
+
+# Summarize
+def summarize_text(text, lang, length):
     if length == "short":
-        detail = "in 3-4 very short bullet points"
+        detail = "in 3-4 bullet points"
     elif length == "medium":
-        detail = "in 6-8 clear bullet points"
+        detail = "in 6-8 bullet points"
     else:
-        detail = "in 10-15 detailed bullet points"
+        detail = "in 10-12 detailed bullet points"
 
-    # Language control
     if lang == "hi":
-        lang_text = "Hindi"
-    elif lang == "harappan":
-        lang_text = "symbolic ancient Indus-style language"
+        language = "Hindi"
     else:
-        lang_text = "English"
+        language = "English"
 
     prompt = f"""
-    Summarize the following transcript {detail} in {lang_text}.
+    Summarize this transcript {detail} in {language}.
 
-    RULES:
+    Rules:
     - Only bullet points
-    - No introduction
-    - Start each point with "- "
+    - No intro
+    - Start with "- "
 
     Transcript:
     {text[:4000]}
@@ -71,42 +71,23 @@ def summarize_text(text, lang="en", length="medium"):
         messages=[{"role": "user", "content": prompt}]
     )
 
-    raw = response.choices[0].message.content
-
-    # Clean output
-    cleaned = "\n".join(
-        line for line in raw.split("\n")
-        if line.strip().startswith("-")
-    )
-
-    return cleaned if cleaned.strip() else raw
+    return response.choices[0].message.content
 
 
-# 🟢 Health check route
 @app.get("/")
 def home():
-    return {"message": "API is working"}
+    return {"message": "API working"}
 
 
-# 🔥 Main summarization endpoint (frontend sends transcript)
-@app.post("/summarize-text")
-def summarize_text_api(data: dict = Body(...)):
-    try:
-        text = data.get("text")
-        lang = data.get("lang", "en")
-        length = data.get("length", "medium")
+@app.get("/summarize")
+def summarize(url: str, lang: str = "en", length: str = "medium"):
+    video_id = extract_video_id(url)
 
-        if not text:
-            return {"error": "No transcript text provided"}
+    text = get_transcript(video_id)
 
-        summary = summarize_text(text, lang, length)
+    if not text:
+        return {"error": "No transcript available for this video"}
 
-        # 🎮 Minecraft conversion (after summary)
-        if lang == "minecraft":
-            summary = to_enchanting(summary)
+    summary = summarize_text(text, lang, length)
 
-        return {"summary": summary}
-
-    except Exception as e:
-        print("ERROR:", e)
-        return {"error": "Something went wrong"}
+    return {"summary": summary}
