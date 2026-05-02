@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import "./App.css";
 import jsPDF from "jspdf";
-import { YoutubeTranscript } from "youtube-transcript";
 
 function App() {
   const [url, setUrl] = useState("");
@@ -14,30 +13,43 @@ function App() {
 
   // Theme load
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme) {
-      setDarkMode(savedTheme === "dark");
-    }
+    const saved = localStorage.getItem("theme");
+    if (saved) setDarkMode(saved === "dark");
   }, []);
 
-  // Theme apply
   useEffect(() => {
-    if (darkMode) {
-      document.body.className = "dark";
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.body.className = "light";
-      localStorage.setItem("theme", "light");
-    }
+    document.body.className = darkMode ? "dark" : "light";
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
   const extractVideoId = (url) => {
-    if (url.includes("v=")) {
-      return url.split("v=")[1].split("&")[0];
-    } else if (url.includes("youtu.be/")) {
-      return url.split("youtu.be/")[1].split("?")[0];
-    }
+    if (url.includes("v=")) return url.split("v=")[1].split("&")[0];
+    if (url.includes("youtu.be/")) return url.split("youtu.be/")[1].split("?")[0];
     return url;
+  };
+
+  // 🔥 FIXED TRANSCRIPT FETCH (WITH PROXY)
+  const fetchTranscript = async (videoId) => {
+    try {
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+        `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}`
+      )}`;
+
+      const res = await fetch(proxyUrl);
+      const xml = await res.text();
+
+      if (!xml || xml.trim() === "") return null;
+
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xml, "text/xml");
+
+      const texts = Array.from(xmlDoc.getElementsByTagName("text"));
+
+      return texts.map((t) => t.textContent).join(" ");
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
   };
 
   const handleSummarize = async () => {
@@ -49,7 +61,7 @@ function App() {
     try {
       const videoId = extractVideoId(url);
 
-      // Get video title
+      // Get title
       try {
         const res = await fetch(
           `https://www.youtube.com/oembed?url=${url}&format=json`
@@ -60,16 +72,20 @@ function App() {
         setTitle("youtube-summary");
       }
 
-      // 🔥 Fetch transcript from browser
-      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
+      // 🔥 Get transcript
+      const transcriptText = await fetchTranscript(videoId);
 
-      const transcriptText = transcriptData
-        .map((item) => item.text)
-        .join(" ");
+      if (!transcriptText) {
+        setSummary(
+          "❌ No captions found.\nTry educational videos or TED talks."
+        );
+        setLoading(false);
+        return;
+      }
 
       // 🔥 Send to backend
       const response = await fetch(
-        "https://yt-summarizer-1-4j2v.onrender.com",
+        "https://yt-summarizer-1-4j2v.onrender.com/summarize-text",
         {
           method: "POST",
           headers: {
@@ -77,8 +93,8 @@ function App() {
           },
           body: JSON.stringify({
             text: transcriptText,
-            lang: lang,
-            length: length,
+            lang,
+            length,
           }),
         }
       );
@@ -90,55 +106,43 @@ function App() {
       } else {
         setSummary("Error: " + data.error);
       }
-    } catch (error) {
-      console.error(error);
-      setSummary("Could not fetch transcript for this video");
+    } catch (err) {
+      console.error(err);
+      setSummary("❌ Something went wrong");
     }
 
     setLoading(false);
   };
 
+  // PDF
   const downloadPDF = () => {
     if (!summary) return;
 
     const doc = new jsPDF();
-
-    const pageHeight = doc.internal.pageSize.height;
-    const margin = 10;
-    const lineHeight = 7;
-
     doc.setFontSize(16);
-    doc.text(title || "YouTube Summary", margin, margin);
+    doc.text(title || "YouTube Summary", 10, 10);
 
     doc.setFontSize(12);
-
     const lines = doc.splitTextToSize(summary, 180);
 
     let y = 20;
-
     lines.forEach((line) => {
-      if (y + lineHeight > pageHeight - margin) {
+      if (y > 280) {
         doc.addPage();
-        y = margin;
+        y = 10;
       }
-
-      doc.text(line, margin, y);
-      y += lineHeight;
+      doc.text(line, 10, y);
+      y += 7;
     });
 
-    const cleanTitle = (title || "youtube-summary").replace(
-      /[\\/:*?"<>|]/g,
-      ""
-    );
-
-    doc.save(`${cleanTitle}.pdf`);
+    doc.save((title || "summary") + ".pdf");
   };
 
   return (
     <div className="App">
       <div className="container">
 
-        {/* 🌙 Toggle */}
+        {/* Theme toggle */}
         <div className="toggle">
           <button onClick={() => setDarkMode(!darkMode)}>
             {darkMode ? "☀️" : "🌙"}
