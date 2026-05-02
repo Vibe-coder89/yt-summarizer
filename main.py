@@ -4,6 +4,7 @@ from groq import Groq
 import os
 from dotenv import load_dotenv
 import yt_dlp
+import requests
 
 # Load env
 load_dotenv()
@@ -43,41 +44,46 @@ def extract_video_id(url: str):
     return url
 
 
-# 🔥 Get transcript using yt-dlp (BEST for Render)
+# 🔥 Transcript via yt-dlp metadata (lightweight)
 def get_transcript(video_id):
     url = f"https://www.youtube.com/watch?v={video_id}"
 
     ydl_opts = {
-        "skip_download": True,
-        "writesubtitles": True,
-        "writeautomaticsub": True,
-        "subtitlesformat": "vtt",
-        "subtitleslangs": ["en"],
-        "outtmpl": "sub"
+        "quiet": True,
+        "skip_download": True
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            info = ydl.extract_info(url, download=False)
 
-        # Read subtitles file
-        if not os.path.exists("sub.en.vtt"):
+        subtitles = info.get("subtitles") or info.get("automatic_captions")
+
+        if not subtitles:
             return None
 
-        with open("sub.en.vtt", "r", encoding="utf-8") as f:
-            content = f.read()
+        # Try English captions
+        en_subs = subtitles.get("en") or subtitles.get("en-US")
 
-        # Clean captions
-        lines = content.split("\n")
+        if not en_subs:
+            return None
+
+        sub_url = en_subs[0]["url"]
+
+        res = requests.get(sub_url)
+        data = res.text
+
+        # Clean subtitle text
+        lines = data.split("\n")
         text = " ".join(
             line for line in lines
-            if line and "-->" not in line and "WEBVTT" not in line
+            if line and "-->" not in line and not line.isdigit() and "WEBVTT" not in line
         )
 
         return text.strip()
 
     except Exception as e:
-        print("YT-DLP ERROR:", e)
+        print("TRANSCRIPT ERROR:", e)
         return None
 
 
@@ -139,7 +145,7 @@ def summarize(url: str, lang: str = "en", length: str = "medium"):
 
         if not text:
             return {
-                "error": "No captions available for this video"
+                "error": "Captions not accessible for this video (try another)"
             }
 
         summary = summarize_text(text, lang, length)
