@@ -1,36 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import "./App.css";
-import jsPDF from "jspdf";
-
-// 🔥 use environment variable
-const API_URL =
-  process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
+import { YoutubeTranscript } from "youtube-transcript";
 
 function App() {
   const [url, setUrl] = useState("");
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(false);
-  const [lang, setLang] = useState("en");
-  const [length, setLength] = useState("medium");
-  const [title, setTitle] = useState("");
-  const [darkMode, setDarkMode] = useState(true);
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme) {
-      setDarkMode(savedTheme === "dark");
+  const extractVideoId = (url) => {
+    if (url.includes("v=")) {
+      return url.split("v=")[1].split("&")[0];
+    } else if (url.includes("youtu.be/")) {
+      return url.split("youtu.be/")[1].split("?")[0];
     }
-  }, []);
-
-  useEffect(() => {
-    if (darkMode) {
-      document.body.className = "dark";
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.body.className = "light";
-      localStorage.setItem("theme", "light");
-    }
-  }, [darkMode]);
+    return url;
+  };
 
   const handleSummarize = async () => {
     if (!url) return;
@@ -39,81 +23,45 @@ function App() {
     setSummary("");
 
     try {
-      // 🎥 Get video title
-      try {
-        const res = await fetch(
-          `https://www.youtube.com/oembed?url=${url}&format=json`
-        );
-        const data = await res.json();
-        setTitle(data.title);
-      } catch {
-        setTitle("youtube-summary");
-      }
+      const videoId = extractVideoId(url);
 
-      // 🔥 Use API URL (important change)
+      // 🔥 FETCH TRANSCRIPT FROM BROWSER
+      const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
+
+      const transcriptText = transcriptData
+        .map((item) => item.text)
+        .join(" ");
+
+      // 🔥 SEND TEXT TO BACKEND (NOT URL)
       const response = await fetch(
-        `${API_URL}/summarize?url=${url}&lang=${lang}&length=${length}`
+        `https://your-render-backend-url/summarize-text`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: transcriptText }),
+        }
       );
 
       const data = await response.json();
 
       if (data.summary) {
         setSummary(data.summary);
-      } else if (data.error) {
-        setSummary("Error: " + data.error);
       } else {
-        setSummary("Something went wrong");
+        setSummary("Error: " + data.error);
       }
-    } catch {
-      setSummary("Error connecting to backend");
+    } catch (error) {
+      console.error(error);
+      setSummary("Could not fetch transcript for this video");
     }
 
     setLoading(false);
   };
 
-  const downloadPDF = () => {
-    if (!summary) return;
-
-    const doc = new jsPDF();
-
-    const pageHeight = doc.internal.pageSize.height;
-    const margin = 10;
-    const lineHeight = 7;
-
-    doc.setFontSize(16);
-    doc.text(title || "YouTube Summary", margin, margin);
-
-    doc.setFontSize(12);
-    const lines = doc.splitTextToSize(summary, 180);
-
-    let y = 20;
-
-    lines.forEach((line) => {
-      if (y + lineHeight > pageHeight - margin) {
-        doc.addPage();
-        y = margin;
-      }
-      doc.text(line, margin, y);
-      y += lineHeight;
-    });
-
-    const cleanTitle = (title || "youtube-summary").replace(
-      /[\\/:*?"<>|]/g,
-      ""
-    );
-
-    doc.save(`${cleanTitle}.pdf`);
-  };
-
   return (
     <div className="App">
       <div className="container">
-        <div className="toggle">
-          <button onClick={() => setDarkMode(!darkMode)}>
-            {darkMode ? "☀️" : "🌙"}
-          </button>
-        </div>
-
         <h1>🎥 YouTube Summarizer</h1>
 
         <input
@@ -123,33 +71,11 @@ function App() {
           onChange={(e) => setUrl(e.target.value)}
         />
 
-        <select value={lang} onChange={(e) => setLang(e.target.value)}>
-          <option value="en">English</option>
-          <option value="hi">Hindi</option>
-          <option value="harappan">Harappan</option>
-          <option value="minecraft">Minecraft</option>
-        </select>
+        <button onClick={handleSummarize}>Summarize</button>
 
-        <div className="row">
-          <select value={length} onChange={(e) => setLength(e.target.value)}>
-            <option value="short">Short</option>
-            <option value="medium">Medium</option>
-            <option value="long">In-depth</option>
-          </select>
+        {loading && <p>⏳ Generating summary...</p>}
 
-          <button onClick={handleSummarize}>Summarize</button>
-        </div>
-
-        {loading && <p className="loading">⏳ Generating summary...</p>}
-
-        {summary && (
-          <>
-            <div className="result">{summary}</div>
-            <button onClick={downloadPDF} className="download-btn">
-              📄 Download PDF
-            </button>
-          </>
-        )}
+        {summary && <div className="result">{summary}</div>}
       </div>
     </div>
   );
